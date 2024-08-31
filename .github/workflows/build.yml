@@ -79,28 +79,11 @@ jobs:
           ./gradlew clean assembleRelease
           echo "BUILD_TOOL_VERSION=$(ls /usr/local/lib/android/sdk/build-tools/ | tail -n 1)" >> $GITHUB_ENV
 
-      - name: Sign Release
-        env: 
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-        if: ${{ env.SIGNING_KEY != '' }}
-        continue-on-error: true
-        uses: noriban/sign-android-release@v5.1
-        id: sign_app
-        with:
-          releaseDirectory: app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
-          alias: ${{ secrets.ALIAS }}
-          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
-
       - name: Upload build artifact
-        env: 
-           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-        if: ${{ env.SIGNING_KEY != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: APatch
-          path: ${{steps.sign_app.outputs.signedReleaseFile}}
+          path: app/build/outputs/apk/release/*.apk
 
       - name: Post to channel
         if: ${{github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.ref_type != 'tag'}}
@@ -120,15 +103,12 @@ jobs:
           fi
 
       - name: Release apk
-        env: 
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-        if: ${{ env.SIGNING_KEY != '' && github.ref_type == 'tag' }}
-        continue-on-error: true
+        if: ${{ github.ref_type == 'tag' }}
         uses: ncipollo/release-action@v1
         with:
           token: ${{ github.token }}
           tag: ${{ steps.parse_version.outputs.VERSION }}
-          artifacts: ${{steps.sign_app.outputs.signedReleaseFile}}
+          artifacts: app/build/outputs/apk/release/*.apk
           generateReleaseNotes: true
           makeLatest: true
           replacesArtifacts: true
