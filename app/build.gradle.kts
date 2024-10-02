@@ -1,4 +1,7 @@
+@file:Suppress("UnstableApiUsage")
+
 import com.android.build.gradle.internal.api.BaseVariantOutputImpl
+import org.jetbrains.kotlin.compose.compiler.gradle.ComposeFeatureFlag
 import java.net.URI
 
 plugins {
@@ -72,8 +75,11 @@ android {
     }
 
     composeCompiler {
-        enableIntrinsicRemember = true
-        enableNonSkippingGroupOptimization = true
+        featureFlags = setOf(
+            ComposeFeatureFlag.IntrinsicRemember,
+            ComposeFeatureFlag.OptimizeNonSkippingGroups,
+            ComposeFeatureFlag.StrongSkipping.disabled()
+        )
     }
 
     packaging {
@@ -223,7 +229,6 @@ tasks.clean {
 
 dependencies {
     implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.navigation.compose)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.material.icons.extended)

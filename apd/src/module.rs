@@ -10,6 +10,7 @@ use const_format::concatcp;
 use is_executable::is_executable;
 use java_properties::PropertiesIter;
 use log::{info, warn};
+use regex_lite::Regex;
 use std::{
     collections::HashMap,
     env::var as env_var,
@@ -126,7 +127,7 @@ fn get_minimal_image_size(img: &str) -> Result<u64> {
 
     let output = String::from_utf8_lossy(&output.stdout);
     println!("- {}", output.trim());
-    let regex = regex::Regex::new(r"filesystem: (\d+)")?;
+    let regex = Regex::new(r"filesystem: (\d+)")?;
     let result = regex
         .captures(&output)
         .ok_or(anyhow::anyhow!("regex not match"))?;
@@ -586,6 +587,28 @@ pub fn uninstall_module(id: &str) -> Result<()> {
 
         Ok(())
     })
+}
+
+pub fn run_action(id: &str) -> Result<()> {
+    let action_script_path = format!("/data/adb/modules/{}/action.sh", id);
+    let result = Command::new(assets::BUSYBOX_PATH)
+        .args(["sh", &action_script_path])
+        .env("ASH_STANDALONE", "1")
+        .env(
+            "PATH",
+            format!(
+                "{}:{}",
+                env_var("PATH").unwrap(),
+                defs::BINARY_DIR.trim_end_matches('/')
+            ),
+        )
+        .env("APATCH", "true")
+        .env("APATCH_VER", defs::VERSION_NAME)
+        .env("APATCH_VER_CODE", defs::VERSION_CODE)
+        .env("OUTFD", "1")
+        .status()?;
+    ensure!(result.success(), "Failed to execute action script");
+    Ok(())
 }
 
 fn _enable_module(module_dir: &str, mid: &str, enable: bool) -> Result<()> {

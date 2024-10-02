@@ -7,11 +7,12 @@ use std::fmt::Write;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Error, Read};
 use std::os::fd::AsRawFd;
+use std::os::unix::fs::PermissionsExt;
 use std::process::{exit, Child, Command};
 use std::sync::{Arc, Mutex};
 use std::thread::sleep;
 use std::time::Duration;
-use std::{process, ptr};
+use std::{fs, process, ptr};
 
 const MAJOR: c_long = 0;
 const MINOR: c_long = 11;
@@ -32,10 +33,22 @@ const SUPERCALL_SU_GET_SAFEMODE: c_long = 0x1112;
 const SUPERCALL_SCONTEXT_LEN: usize = 0x60;
 
 #[repr(C)]
+union SuProfileExtUnion {
+    exclude: bool,
+}
+
+#[repr(C)]
+struct SuProfileExt {
+    union_data: SuProfileExtUnion,
+    padding: [u8; 32], // char _[32];
+}
+
+#[repr(C)]
 struct SuProfile {
     uid: i32,
     to_uid: i32,
     scontext: [u8; SUPERCALL_SCONTEXT_LEN],
+    ext: SuProfileExt,
 }
 
 fn hash_key(key: &CStr) -> c_long {
@@ -273,6 +286,10 @@ pub fn refresh_su_list(skey: &CStr, mutex: &Arc<Mutex<()>>) {
                 uid: config.uid,
                 to_uid: config.to_uid,
                 scontext: convert_string_to_u8_array(&config.sctx),
+                ext: SuProfileExt {
+                    union_data: SuProfileExtUnion { exclude: false },
+                    padding: [0; 32],
+                },
             };
             let result = sc_su_grant_uid(skey, &profile);
             info!(
@@ -291,6 +308,10 @@ pub fn privilege_apd_profile(superkey: &Option<String>) {
         uid: process::id().try_into().expect("PID conversion failed"),
         to_uid: 0,
         scontext: convert_string_to_u8_array(all_allow_ctx),
+        ext: SuProfileExt {
+            union_data: SuProfileExtUnion { exclude: false },
+            padding: [0; 32],
+        },
     };
     if let Some(ref key) = key {
         let result = sc_su(key, &profile);
@@ -309,6 +330,10 @@ pub fn init_load_su_uid(superkey: &Option<String>) {
                     uid: config.uid,
                     to_uid: config.to_uid,
                     scontext: convert_string_to_u8_array(&config.sctx),
+                    ext: SuProfileExt {
+                        union_data: SuProfileExtUnion { exclude: false },
+                        padding: [0; 32],
+                    },
                 };
                 let result = sc_su_grant_uid(key, &profile);
                 info!("Processed {}: result = {}", config.pkg, result);
@@ -386,6 +411,8 @@ fn save_log(args: &[&str], file: &str) -> Result<(), Error> {
                 .truncate(true)
                 .create(true)
                 .open(file)?;
+            let permissions = fs::Permissions::from_mode(0o700);
+            fs::set_permissions(file, permissions).expect("Failed to set permissions");
 
             unsafe {
                 libc::dup2(fd.as_raw_fd(), libc::STDOUT_FILENO);
